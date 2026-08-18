@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ProjectId } from "@/types";
 import { Sidebar, NavViewId } from "@/components/shell/Sidebar";
 import { TopHeader } from "@/components/shell/TopHeader";
 import { LiquidGlassNav } from "@/components/shell/LiquidGlassNav";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { NotificationDrawer } from "@/components/shell/NotificationDrawer";
+import { PasscodeLock } from "@/components/shell/PasscodeLock";
 
 // Views
 import { CommandCenterView } from "@/components/views/CommandCenterView";
@@ -23,11 +24,26 @@ import { ProjectBrainView } from "@/components/views/ProjectBrainView";
 import { SettingsView } from "@/components/views/SettingsView";
 
 export default function Home() {
+  const [unlocked, setUnlocked] = useState(false);
+
+  // Check sessionStorage on mount — stays unlocked for the browser session
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const already = sessionStorage.getItem("okn_unlocked");
+      if (already === "1") setUnlocked(true);
+    }
+  }, []);
+
   const [currentProject, setCurrentProject] = useState<ProjectId>("oknexus-exchange");
   const [currentView, setCurrentView] = useState<NavViewId>("command_center");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Show passcode lock if not yet unlocked
+  if (!unlocked) {
+    return <PasscodeLock onUnlock={() => setUnlocked(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#050609] text-slate-100 flex flex-col antialiased bg-grid-pattern selection:bg-blue-600/30 selection:text-white">
