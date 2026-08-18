@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGeminiModel } from "@/lib/ai/geminiClient";
 import { mockProjectBrains } from "@/lib/data/mockData";
-import { classifyRisk } from "@/lib/ai/safetyEngine";
+import { evaluateSafetyAndRisk } from "@/lib/ai/safetyEngine";
 import { ProjectId } from "@/types";
 
 export const runtime = "nodejs";
