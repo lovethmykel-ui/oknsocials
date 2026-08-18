@@ -20,7 +20,7 @@ import {
   Settings,
   ChevronDown,
   Activity,
-  ShieldCheck,
+  X,
 } from "lucide-react";
 
 export type NavViewId =
@@ -45,6 +45,8 @@ interface SidebarProps {
   unreadCount?: number;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  className?: string;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -52,8 +54,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   currentProject,
   onSelectProject,
-  unreadCount = 3,
+  unreadCount = 0,
   isCollapsed = false,
+  className,
+  onCloseMobile,
 }) => {
   const [projectMenuOpen, setProjectMenuOpen] = React.useState(false);
   const activeProj = mockProjects.find((p) => p.id === currentProject) || mockProjects[0];
@@ -76,16 +80,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={cn(
-        "hidden md:flex flex-col shrink-0 h-screen sticky top-0 bg-[#080A0F] border-r border-white/[0.07] z-30 transition-all duration-200",
-        isCollapsed ? "w-20" : "w-64"
+        "flex flex-col shrink-0 h-screen bg-[#080A0F] border-r border-white/[0.07] z-30 transition-all duration-200",
+        className ? className : cn("hidden md:flex sticky top-0", isCollapsed ? "w-20" : "w-64")
       )}
     >
       {/* Brand Header & Project Switcher */}
       <div className="p-4 border-b border-white/[0.07] relative">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <button
             onClick={() => setProjectMenuOpen(!projectMenuOpen)}
-            className="flex items-center gap-3 text-left w-full p-2 -m-2 rounded-xl hover:bg-white/[0.04] transition-colors group"
+            className="flex items-center gap-3 text-left flex-1 p-2 -m-2 rounded-xl hover:bg-white/[0.04] transition-colors group"
           >
             <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-blue-950/60 border border-blue-500/30 flex items-center justify-center p-1">
               <Image
@@ -102,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="text-xs font-semibold text-white tracking-wide truncate">
                     {activeProj.name}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform ml-1 shrink-0" />
                 </div>
                 <div className="text-[10px] text-blue-400 font-mono tracking-wider">
                   {activeProj.codename}
@@ -110,11 +114,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
           </button>
+
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+              aria-label="Close menu"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Project Switcher Dropdown */}
         {projectMenuOpen && (
-          <div className="absolute top-full left-3 right-3 mt-1 py-1.5 rounded-xl liquid-glass-panel z-50 shadow-2xl border border-white/10">
+          <div className="absolute top-full left-3 right-3 mt-1 py-1.5 rounded-xl liquid-glass-panel z-50 shadow-2xl border border-white/10 bg-[#0D1016]">
             <div className="px-3 py-1 text-[10px] uppercase font-semibold tracking-wider text-slate-400">
               Switch Project
             </div>
@@ -126,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setProjectMenuOpen(false);
                 }}
                 className={cn(
-                  "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
+                  "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors text-left",
                   p.id === currentProject
                     ? "bg-blue-600/20 text-blue-400 font-medium"
                     : "text-slate-300 hover:bg-white/[0.06]"
@@ -160,7 +174,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               onClick={() => onSelectView(item.id)}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 relative group",
+                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 relative group text-left",
                 isActive
                   ? isAI
                     ? "bg-violet-950/40 text-violet-300 border border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.15)]"

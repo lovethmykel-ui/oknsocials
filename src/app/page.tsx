@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ProjectId } from "@/types";
 import { Sidebar, NavViewId } from "@/components/shell/Sidebar";
 import { TopHeader } from "@/components/shell/TopHeader";
@@ -57,30 +58,47 @@ export default function Home() {
           }}
           currentProject={currentProject}
           onSelectProject={setCurrentProject}
-          unreadCount={3}
+          unreadCount={0}
         />
 
-        {/* Mobile Slide-in Drawer Menu */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex">
-            <div className="w-72 bg-[#080A0F] border-r border-white/10 h-full flex flex-col">
-              <Sidebar
-                currentView={currentView}
-                onSelectView={(v) => {
-                  setCurrentView(v);
-                  setIsMobileMenuOpen(false);
-                }}
-                currentProject={currentProject}
-                onSelectProject={setCurrentProject}
-                unreadCount={3}
+        {/* Mobile Slide-in Drawer Menu with Framer Motion */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <div className="md:hidden fixed inset-0 z-50 flex">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+                onClick={() => setIsMobileMenuOpen(false)}
               />
+
+              {/* Drawer Content */}
+              <motion.div
+                initial={{ x: "-100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "-100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 280 }}
+                className="relative w-72 max-w-[80vw] bg-[#080A0F] border-r border-white/10 h-full flex flex-col z-10 shadow-2xl"
+              >
+                <Sidebar
+                  className="w-full h-full flex flex-col border-none"
+                  currentView={currentView}
+                  onSelectView={(v) => {
+                    setCurrentView(v);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  currentProject={currentProject}
+                  onSelectProject={setCurrentProject}
+                  unreadCount={0}
+                  onCloseMobile={() => setIsMobileMenuOpen(false)}
+                />
+              </motion.div>
             </div>
-            <div
-              className="flex-1"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-          </div>
-        )}
+          )}
+        </AnimatePresence>
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0">
@@ -91,7 +109,7 @@ export default function Home() {
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
             onQuickCreate={() => setCurrentView("content_studio")}
-            unreadNotificationsCount={2}
+            unreadNotificationsCount={0}
             onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
           />
 
@@ -147,7 +165,7 @@ export default function Home() {
       <LiquidGlassNav
         currentView={currentView}
         onSelectView={setCurrentView}
-        unreadInboxCount={3}
+        unreadInboxCount={0}
       />
 
       {/* Global Command Palette (Cmd+K) */}
