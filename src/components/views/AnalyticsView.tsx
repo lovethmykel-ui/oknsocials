@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ProjectId } from "@/types";
-import { mockAnalyticsTimeseries, mockProjects } from "@/lib/data/mockData";
+import { mockProjects } from "@/lib/data/mockData";
 import { MetricBlock } from "../ui/MetricBlock";
 import { GlassPanel } from "../ui/GlassPanel";
 import { PlatformBadge } from "../ui/PlatformBadge";
@@ -23,9 +23,21 @@ interface AnalyticsViewProps {
   currentProject: ProjectId;
 }
 
+// Empty timeseries — 8 zero data points
+const emptyTimeseries = Array.from({ length: 8 }, (_, i) => ({
+  date: new Date(Date.now() - (7 - i) * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+  reach: 0,
+  impressions: 0,
+  engagement: 0,
+  engagementRate: 0,
+  followers: 0,
+  aiActions: 0,
+  responseSpeedMinutes: 0,
+}));
+
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ currentProject }) => {
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "90d">("7d");
-  const data = mockAnalyticsTimeseries;
+  const data = emptyTimeseries;
   const project = mockProjects.find((p) => p.id === currentProject) || mockProjects[0];
 
   // Calculate SVG dimensions for Reach & Impressions Area Chart
