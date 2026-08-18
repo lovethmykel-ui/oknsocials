@@ -95,12 +95,16 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
         // Set safety from AI response
         if (data.safety) {
           setSafetyResult({
-            tier: data.safety.tier,
-            score: data.safety.score,
-            flags: data.safety.flags || [],
-            approved: data.safety.approved,
-            requiresReview: !data.safety.approved,
-            action: data.safety.approved ? "approve" : "review",
+            riskLevel: data.safety.tier ?? "low",
+            violations: data.safety.flags || [],
+            requiresHumanApproval: !data.safety.approved,
+            blocked: data.safety.tier === "critical",
+            policyTriggered: data.safety.approved
+              ? "POLICY-STANDARD-AUTONOMOUS-ENGAGEMENT"
+              : "POLICY-REVIEW-REQUIRED",
+            reason: data.safety.approved
+              ? "Passed all safety rules."
+              : "AI flagged content for review.",
           });
         }
       } else {
@@ -255,7 +259,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
                         : "border-white/10 opacity-70 hover:opacity-100"
                     )}
                   >
-                    <Image src={med.url} alt={med.title} fill className="object-contain" />
+                    <Image src={med.url} alt={med.title} fill sizes="(max-width: 768px) 15vw, 8vw" className="object-contain" />
                   </div>
                 ))}
               </div>

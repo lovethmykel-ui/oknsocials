@@ -117,7 +117,7 @@ export const InstagramPreview: React.FC<PreviewProps> = ({
       {/* Media Frame */}
       <div className="relative aspect-square bg-black flex items-center justify-center overflow-hidden">
         {variant.mediaUrls && variant.mediaUrls.length > 0 ? (
-          <Image src={variant.mediaUrls[0]} alt="Instagram Media" fill className="object-cover" />
+          <Image src={variant.mediaUrls[0]} alt="Instagram Media" fill sizes="(max-width: 640px) 100vw, 360px" className="object-cover" />
         ) : (
           <div className="text-xs text-slate-500">Image Asset Frame (1:1 / 4:5)</div>
         )}

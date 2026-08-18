@@ -104,15 +104,15 @@ Return ONLY the post text — no explanations, no quotes, no labels. Just the fi
 
     // Run safety classification on the full combined output
     const combinedText = Object.values(variants).map((v) => v.text).join(" ");
-    const safety = classifyRisk(combinedText, projectId);
+    const safety = evaluateSafetyAndRisk(combinedText, projectId);
 
     return NextResponse.json({
       variants,
       safety: {
-        tier: safety.tier,
-        score: safety.score,
-        flags: safety.flags,
-        approved: safety.tier === "low" || safety.tier === "medium",
+        tier: safety.riskLevel,
+        score: safety.riskLevel === "low" ? 0.02 : safety.riskLevel === "medium" ? 0.45 : safety.riskLevel === "high" ? 0.75 : 0.99,
+        flags: safety.violations,
+        approved: !safety.blocked && !safety.requiresHumanApproval,
       },
       model: "gemini-2.0-flash",
       projectId,

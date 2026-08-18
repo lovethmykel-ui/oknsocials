@@ -133,6 +133,7 @@ export const MediaVaultView: React.FC<MediaVaultViewProps> = ({ currentProject }
                     src={item.url}
                     alt={item.title}
                     fill
+                    sizes="(max-width: 768px) 50vw, 25vw"
                     className="object-contain transition-transform duration-300 group-hover:scale-105"
                   />
                 </div>
@@ -162,6 +163,7 @@ export const MediaVaultView: React.FC<MediaVaultViewProps> = ({ currentProject }
                   src={selectedItem.url}
                   alt={selectedItem.title}
                   fill
+                  sizes="(max-width: 1024px) 100vw, 33vw"
                   className="object-contain"
                 />
               </div>

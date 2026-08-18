@@ -187,7 +187,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <div className="flex items-start gap-3 min-w-0">
                 {post.primaryMediaUrl && (
                   <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-slate-900 border border-white/10 relative">
-                    <Image src={post.primaryMediaUrl} alt={post.title} fill className="object-cover" />
+                    <Image src={post.primaryMediaUrl} alt={post.title} fill sizes="56px" className="object-cover" />
                   </div>
                 )}
                 <div className="min-w-0">
