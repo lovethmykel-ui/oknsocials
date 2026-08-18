@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import Image from "next/image";
 import confetti from "canvas-confetti";
 import { ProjectId, PlatformId, PostVariant, PostType } from "@/types";
@@ -49,8 +49,9 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
   const [isGenerating, setIsGenerating] = useState(false);
   const [safetyResult, setSafetyResult] = useState<RiskEvaluationResult | null>(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
-  // Initialize generated variants
+  // Initialize generated variants (local mock for instant first load)
   const [variants, setVariants] = useState<Record<PlatformId, PostVariant>>(() =>
     generatePlatformVariants({
       projectId: currentProject,
@@ -59,21 +60,76 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
     })
   );
 
-  const handleGenerateAI = () => {
+  const handleGenerateAI = useCallback(async () => {
     setIsGenerating(true);
-    setTimeout(() => {
+    setAiError(null);
+
+    try {
+      // Call real Gemini AI via server route
+      const res = await fetch("/api/ai/generate-variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: currentProject,
+          concept: rawConcept,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Merge AI-generated texts into existing variant structure
+        setVariants((prev) => {
+          const updated = { ...prev };
+          for (const [platform, v] of Object.entries(data.variants)) {
+            if (updated[platform as PlatformId]) {
+              updated[platform as PlatformId] = {
+                ...updated[platform as PlatformId],
+                text: (v as { text: string }).text,
+                hashtags: (v as { hashtags: string[] }).hashtags,
+              };
+            }
+          }
+          return updated;
+        });
+
+        // Set safety from AI response
+        if (data.safety) {
+          setSafetyResult({
+            tier: data.safety.tier,
+            score: data.safety.score,
+            flags: data.safety.flags || [],
+            approved: data.safety.approved,
+            requiresReview: !data.safety.approved,
+            action: data.safety.approved ? "approve" : "review",
+          });
+        }
+      } else {
+        // Graceful fallback: use local generator
+        const generated = generatePlatformVariants({
+          projectId: currentProject,
+          rawConcept,
+          primaryMediaUrl: selectedMediaUrl,
+        });
+        setVariants(generated);
+        const safety = evaluateSafetyAndRisk(rawConcept, currentProject);
+        setSafetyResult(safety);
+        setAiError("Gemini API unavailable — using local AI engine.");
+      }
+    } catch {
+      // Network error fallback
       const generated = generatePlatformVariants({
         projectId: currentProject,
         rawConcept,
         primaryMediaUrl: selectedMediaUrl,
       });
       setVariants(generated);
-
       const safety = evaluateSafetyAndRisk(rawConcept, currentProject);
       setSafetyResult(safety);
+      setAiError("Gemini API unavailable — using local AI engine.");
+    } finally {
       setIsGenerating(false);
-    }, 400);
-  };
+    }
+  }, [currentProject, rawConcept, selectedMediaUrl]);
 
   const handlePublishNow = () => {
     confetti({
@@ -161,7 +217,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/30 text-violet-200 text-xs font-semibold shadow-sm transition-colors"
               >
                 <Sparkles className={cn("w-3.5 h-3.5 text-violet-400", isGenerating && "animate-spin")} />
-                <span>{isGenerating ? "Synthesizing..." : "AI Adapt Across 7 Platforms"}</span>
+                <span>{isGenerating ? "Gemini Synthesizing..." : "✦ AI Adapt via Gemini"}</span>
               </button>
             </div>
 
@@ -172,6 +228,14 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({ currentPro
               placeholder="Enter release concept, architectural highlights, or announcement text..."
               className="w-full p-3.5 rounded-xl bg-black/60 border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 leading-relaxed resize-none mb-3"
             />
+
+            {/* AI error / fallback notice */}
+            {aiError && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{aiError}</span>
+              </div>
+            )}
 
             {/* Media Vault Quick Selector */}
             <div className="mb-4">
