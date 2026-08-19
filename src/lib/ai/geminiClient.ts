@@ -14,8 +14,8 @@ if (!apiKey && process.env.NODE_ENV === "production") {
 
 export const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
-// Default model for content generation
-export const CONTENT_MODEL = "gemini-2.0-flash";
+// Default working model for this API key
+export const CONTENT_MODEL = "gemini-flash-latest";
 
 // Default generation config — balanced for social content
 export const defaultGenerationConfig: GenerationConfig = {
