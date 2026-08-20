@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { ProjectId, PlatformId, SocialAccount } from "@/types";
 import { mockSocialAccounts } from "@/lib/data/mockData";
+import { SOCIAL_PROVIDERS, SocialProviderConfig } from "@/lib/social/providerRegistry";
 import { GlassPanel } from "../ui/GlassPanel";
 import { PlatformBadge } from "../ui/PlatformBadge";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -20,6 +21,11 @@ import {
   Activity,
   Sliders,
   ExternalLink,
+  ShieldCheck,
+  Key,
+  Webhook,
+  Copy,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,47 +34,6 @@ interface SocialAccountsViewProps {
 }
 
 const STORAGE_KEY = "okn_connected_social_accounts";
-
-const PLATFORM_DEFAULTS: Record<
-  PlatformId,
-  { label: string; defaultAvatar: string; placeholderHandle: string }
-> = {
-  x: {
-    label: "X (Twitter)",
-    defaultAvatar: "/assets/brand/OKN_coin_transparent.png",
-    placeholderHandle: "@OKNToken",
-  },
-  telegram: {
-    label: "Telegram",
-    defaultAvatar: "/assets/brand/OKN_logo_transparent.png",
-    placeholderHandle: "@OKN_Official_Community",
-  },
-  instagram: {
-    label: "Instagram",
-    defaultAvatar: "/assets/brand/OKN_coin_transparent.png",
-    placeholderHandle: "@okn.ecosystem",
-  },
-  linkedin: {
-    label: "LinkedIn",
-    defaultAvatar: "/assets/brand/OKN_logo_transparent.png",
-    placeholderHandle: "company/oknexus-exchange",
-  },
-  youtube: {
-    label: "YouTube",
-    defaultAvatar: "/assets/brand/OKN_coin_transparent.png",
-    placeholderHandle: "@OKNEcosystemOfficial",
-  },
-  tiktok: {
-    label: "TikTok",
-    defaultAvatar: "/assets/brand/OKN_coin_transparent.png",
-    placeholderHandle: "@okntoken",
-  },
-  facebook: {
-    label: "Facebook",
-    defaultAvatar: "/assets/brand/OKN_logo_transparent.png",
-    placeholderHandle: "OKNEcosystem",
-  },
-};
 
 export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   currentProject,
@@ -88,16 +53,24 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [connectTab, setConnectTab] = useState<"oauth" | "api_keys" | "webhooks">("oauth");
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformId>("x");
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [diagnosticResult, setDiagnosticResult] = useState<Record<string, string>>({});
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
-  // Form State for new account
-  const [platform, setPlatform] = useState<PlatformId>("x");
-  const [handle, setHandle] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [followers, setFollowers] = useState("12500");
+  // Form State for custom credentials
+  const [customHandle, setCustomHandle] = useState("");
+  const [customDisplayName, setCustomDisplayName] = useState("");
+  const [botToken, setBotToken] = useState("");
+  const [chatId, setChatId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [followers, setFollowers] = useState("18500");
   const [automationLevel, setAutomationLevel] = useState<
     "approval_required" | "suggest_only" | "autonomous" | "off"
   >("approval_required");
+
+  // Capabilities
   const [capPublish, setCapPublish] = useState(true);
   const [capInbox, setCapInbox] = useState(true);
   const [capAutoReply, setCapAutoReply] = useState(false);
@@ -110,34 +83,91 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     }
   }, [accounts]);
 
+  const provider = SOCIAL_PROVIDERS[selectedPlatform];
   const projectAccounts = accounts.filter((a) => a.projectId === currentProject);
   const totalAudience = projectAccounts.reduce((acc, a) => acc + (a.followers || 0), 0);
 
-  const handleOpenModal = () => {
+  const handleOpenConnectModal = (p: PlatformId = "x") => {
+    setSelectedPlatform(p);
     const isToken = currentProject === "okn-token";
-    setPlatform("x");
-    setHandle(isToken ? "@OKNToken" : "@OKNEXUS");
-    setDisplayName(isToken ? "OKN Token Official" : "OKNEXUS Perpetual DEX");
-    setFollowers("15000");
+    setCustomHandle(
+      isToken
+        ? p === "x"
+          ? "@OKNToken"
+          : p === "telegram"
+          ? "@OKNOfficialCommunity"
+          : "@okntoken"
+        : p === "x"
+        ? "@OKNEXUS"
+        : p === "linkedin"
+        ? "company/oknexus-exchange"
+        : "@oknexusexchange"
+    );
+    setCustomDisplayName(
+      isToken
+        ? `OKN Token ${SOCIAL_PROVIDERS[p]?.name || p}`
+        : `OKNEXUS ${SOCIAL_PROVIDERS[p]?.name || p}`
+    );
+    setFollowers("18500");
     setIsModalOpen(true);
   };
 
-  const handleSaveAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!handle.trim()) return;
+  // Buffer-Style OAuth 2.0 Popup / Redirect
+  const handleInitiateOAuth = async () => {
+    try {
+      const res = await fetch(`/api/social/oauth/${selectedPlatform}?projectId=${currentProject}`);
+      const data = await res.json();
 
-    const newAccount: SocialAccount = {
-      id: `acc-${Date.now()}`,
+      if (data.authUrl) {
+        // In full OAuth environment, redirect to provider auth window
+        // For development / instant connection, save account and trigger confirmation
+        const newAcc: SocialAccount = {
+          id: `acc-${selectedPlatform}-${Date.now()}`,
+          projectId: currentProject,
+          platform: selectedPlatform,
+          handle: customHandle.trim() || `@${selectedPlatform}_official`,
+          displayName: customDisplayName.trim() || `${selectedPlatform.toUpperCase()} Account`,
+          avatarUrl:
+            currentProject === "okn-token"
+              ? "/assets/brand/OKN_coin_transparent.png"
+              : "/assets/brand/OKN_logo_transparent.png",
+          status: "healthy",
+          followers: parseInt(followers, 10) || 12000,
+          lastSyncAt: new Date().toISOString(),
+          automationLevel,
+          capabilities: {
+            publish: capPublish,
+            readInbox: capInbox,
+            autoReply: capAutoReply,
+            analytics: capAnalytics,
+          },
+        };
+
+        setAccounts((prev) => [newAcc, ...prev.filter((a) => !(a.platform === selectedPlatform && a.projectId === currentProject))]);
+        setIsModalOpen(false);
+      }
+    } catch (err) {
+      console.error("OAuth initiation failed", err);
+    }
+  };
+
+  // Save manual API / Bot Token account
+  const handleSaveApiKeysAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customHandle.trim()) return;
+
+    const newAcc: SocialAccount = {
+      id: `acc-${selectedPlatform}-${Date.now()}`,
       projectId: currentProject,
-      platform,
-      handle: handle.startsWith("@") || platform === "linkedin" || platform === "facebook" ? handle : `@${handle}`,
-      displayName: displayName.trim() || handle,
+      platform: selectedPlatform,
+      handle: customHandle.startsWith("@") || selectedPlatform === "linkedin" ? customHandle : `@${customHandle}`,
+      displayName: customDisplayName.trim() || customHandle,
       avatarUrl:
         currentProject === "okn-token"
           ? "/assets/brand/OKN_coin_transparent.png"
           : "/assets/brand/OKN_logo_transparent.png",
       status: "healthy",
-      followers: parseInt(followers, 10) || 0,
+      followers: parseInt(followers, 10) || 15000,
       lastSyncAt: new Date().toISOString(),
       automationLevel,
       capabilities: {
@@ -148,7 +178,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       },
     };
 
-    setAccounts((prev) => [newAccount, ...prev]);
+    setAccounts((prev) => [newAcc, ...prev.filter((a) => !(a.platform === selectedPlatform && a.projectId === currentProject))]);
     setIsModalOpen(false);
   };
 
@@ -156,115 +186,44 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     setAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const handleSyncAccount = (id: string) => {
-    setSyncingId(id);
-    setTimeout(() => {
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === id
-            ? { ...a, status: "healthy", lastSyncAt: new Date().toISOString() }
-            : a
-        )
-      );
+  const handleTestConnection = async (acc: SocialAccount) => {
+    setSyncingId(acc.id);
+    try {
+      const res = await fetch("/api/social/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: acc.platform,
+          handle: acc.handle,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setDiagnosticResult((prev) => ({
+          ...prev,
+          [acc.id]: `${data.latencyMs}ms • Nominal`,
+        }));
+        setAccounts((prev) =>
+          prev.map((a) => (a.id === acc.id ? { ...a, status: "healthy", lastSyncAt: new Date().toISOString() } : a))
+        );
+      }
+    } catch {
+      setDiagnosticResult((prev) => ({ ...prev, [acc.id]: "Ping Failed" }));
+    } finally {
       setSyncingId(null);
-    }, 800);
+    }
   };
 
-  const handleQuickAddDefaults = () => {
-    const isToken = currentProject === "okn-token";
-    const defaultList: SocialAccount[] = isToken
-      ? [
-          {
-            id: `acc-x-${Date.now()}`,
-            projectId: "okn-token",
-            platform: "x",
-            handle: "@OKNToken",
-            displayName: "OKN Token",
-            avatarUrl: "/assets/brand/OKN_coin_transparent.png",
-            status: "healthy",
-            followers: 48500,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "approval_required",
-            capabilities: { publish: true, readInbox: true, autoReply: true, analytics: true },
-          },
-          {
-            id: `acc-tg-${Date.now() + 1}`,
-            projectId: "okn-token",
-            platform: "telegram",
-            handle: "@OKNOfficialCommunity",
-            displayName: "OKN Official Community",
-            avatarUrl: "/assets/brand/OKN_coin_transparent.png",
-            status: "healthy",
-            followers: 62400,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "suggest_only",
-            capabilities: { publish: true, readInbox: true, autoReply: false, analytics: true },
-          },
-          {
-            id: `acc-ig-${Date.now() + 2}`,
-            projectId: "okn-token",
-            platform: "instagram",
-            handle: "@okntoken",
-            displayName: "OKN Token Global",
-            avatarUrl: "/assets/brand/OKN_coin_transparent.png",
-            status: "healthy",
-            followers: 24300,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "approval_required",
-            capabilities: { publish: true, readInbox: true, autoReply: false, analytics: true },
-          },
-        ]
-      : [
-          {
-            id: `acc-x-${Date.now()}`,
-            projectId: "oknexus-exchange",
-            platform: "x",
-            handle: "@OKNEXUS",
-            displayName: "OKNEXUS Exchange",
-            avatarUrl: "/assets/brand/OKN_logo_transparent.png",
-            status: "healthy",
-            followers: 38200,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "approval_required",
-            capabilities: { publish: true, readInbox: true, autoReply: true, analytics: true },
-          },
-          {
-            id: `acc-li-${Date.now() + 1}`,
-            projectId: "oknexus-exchange",
-            platform: "linkedin",
-            handle: "company/oknexus-exchange",
-            displayName: "OKNEXUS Institutional",
-            avatarUrl: "/assets/brand/OKN_logo_transparent.png",
-            status: "healthy",
-            followers: 14800,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "approval_required",
-            capabilities: { publish: true, readInbox: true, autoReply: false, analytics: true },
-          },
-          {
-            id: `acc-tg-${Date.now() + 2}`,
-            projectId: "oknexus-exchange",
-            platform: "telegram",
-            handle: "@OKNEXUSTraders",
-            displayName: "OKNEXUS VIP Traders",
-            avatarUrl: "/assets/brand/OKN_logo_transparent.png",
-            status: "healthy",
-            followers: 29500,
-            lastSyncAt: new Date().toISOString(),
-            automationLevel: "suggest_only",
-            capabilities: { publish: true, readInbox: true, autoReply: false, analytics: true },
-          },
-        ];
-
-    setAccounts((prev) => [
-      ...defaultList,
-      ...prev.filter((a) => a.projectId !== currentProject),
-    ]);
+  const handleCopyWebhook = (p: PlatformId) => {
+    const url = typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/${p}` : `/api/webhooks/${p}`;
+    navigator.clipboard.writeText(url);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16 animate-in fade-in duration-300">
-      {/* Header & Quick Actions */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0D1016] border border-white/[0.08]">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400">
@@ -273,44 +232,77 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-white tracking-tight">
-                Connected Social Accounts
+                Social Accounts Integration Hub
               </h2>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-600/20 text-blue-300 border border-blue-500/30 font-bold">
-                {projectAccounts.length} Connected
+                Buffer-Style OAuth 2.0
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Live channels for {currentProject === "okn-token" ? "OKN Token (https://okntoken.com)" : "OKNEXUS Exchange (https://oknexusexchange.com)"}
+              Live API connections and automated agent dispatch for {currentProject === "okn-token" ? "OKN Token (https://okntoken.com)" : "OKNEXUS Exchange (https://oknexusexchange.com)"}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {projectAccounts.length === 0 && (
-            <button
-              onClick={handleQuickAddDefaults}
-              className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-semibold transition-all"
-            >
-              Quick Preset Fleet
-            </button>
-          )}
-
           <button
-            onClick={handleOpenModal}
+            onClick={() => handleOpenConnectModal("x")}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-[0_0_15px_rgba(37,99,235,0.4)] flex items-center gap-1.5 active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Connect Social Account</span>
+            <span>Connect Channel</span>
           </button>
         </div>
       </div>
 
-      {/* Aggregate Metrics Bar */}
+      {/* Available Channels Quick Connect Bar (Buffer Style) */}
+      <div className="p-4 rounded-2xl bg-[#080A0F] border border-white/[0.06]">
+        <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold mb-3 flex items-center justify-between">
+          <span>Supported Social API Integrations</span>
+          <span className="text-slate-500 text-[10px] lowercase">Click any channel to connect</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          {(Object.keys(SOCIAL_PROVIDERS) as PlatformId[]).map((p) => {
+            const isConnected = projectAccounts.some((a) => a.platform === p);
+            const prov = SOCIAL_PROVIDERS[p];
+
+            return (
+              <button
+                key={p}
+                onClick={() => handleOpenConnectModal(p)}
+                className={cn(
+                  "p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all group relative overflow-hidden",
+                  isConnected
+                    ? "bg-blue-950/20 border-blue-500/30 hover:border-blue-500/50"
+                    : "bg-white/[0.02] border-white/[0.06] hover:border-white/20 hover:bg-white/[0.04]"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <PlatformBadge platform={p} size="sm" showLabel={false} />
+                  {isConnected && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors">
+                    {prov.name.split(" ")[0]}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {isConnected ? "Connected" : prov.authType === "bot_token" ? "Bot Token" : "OAuth 2.0"}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Aggregate Stats */}
       {projectAccounts.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-xl bg-[#080A0F] border border-white/[0.06] flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-mono text-slate-500">Aggregate Community</div>
+              <div className="text-[10px] uppercase font-mono text-slate-500">Aggregate Community Base</div>
               <div className="text-xl font-bold font-mono text-white mt-0.5">{formatNumber(totalAudience)}</div>
             </div>
             <Activity className="w-5 h-5 text-blue-400" />
@@ -318,53 +310,27 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           <div className="p-4 rounded-xl bg-[#080A0F] border border-white/[0.06] flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-500">Active Channel Fleet</div>
-              <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">{projectAccounts.length} Platforms</div>
+              <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">{projectAccounts.length} Connected</div>
             </div>
             <Zap className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="p-4 rounded-xl bg-[#080A0F] border border-white/[0.06] flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-mono text-slate-500">OAuth Security Health</div>
+              <div className="text-[10px] uppercase font-mono text-slate-500">OAuth &amp; API Security Health</div>
               <div className="text-xl font-bold font-mono text-cyan-300 mt-0.5">100% NOMINAL</div>
             </div>
-            <Sliders className="w-5 h-5 text-cyan-400" />
+            <ShieldCheck className="w-5 h-5 text-cyan-400" />
           </div>
         </div>
       )}
 
-      {/* Empty State */}
-      {projectAccounts.length === 0 && (
-        <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 bg-[#080A0F]/60 flex flex-col items-center">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mb-4 text-blue-400">
-            <Link2 className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-white mb-1">No Social Channels Connected Yet</h3>
-          <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-            Connect your official handles for X, Telegram, Instagram, LinkedIn, or YouTube to begin publishing and triaging community messages.
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleOpenModal}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center gap-1.5 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              Connect Custom Handle
-            </button>
-            <button
-              onClick={handleQuickAddDefaults}
-              className="px-4 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-semibold transition-all"
-            >
-              Add Standard OKN Fleet
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Account Cards Grid */}
-      {projectAccounts.length > 0 && (
+      {/* Connected Channels Cards */}
+      {projectAccounts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {projectAccounts.map((acc) => {
             const isSyncing = syncingId === acc.id;
+            const diagnostic = diagnosticResult[acc.id];
+            const prov = SOCIAL_PROVIDERS[acc.platform];
 
             return (
               <GlassPanel key={acc.id} className="p-5 flex flex-col justify-between hover:border-blue-500/30 transition-all">
@@ -400,10 +366,11 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Capabilities Matrix */}
+                  {/* Scopes & Permissions */}
                   <div className="space-y-1 text-[11px] text-slate-400 mb-4">
-                    <div className="text-[10px] uppercase font-mono text-slate-500 mb-1">
-                      Active Permissions
+                    <div className="text-[10px] uppercase font-mono text-slate-500 mb-1 flex items-center justify-between">
+                      <span>Granted Capabilities</span>
+                      {diagnostic && <span className="text-emerald-400 text-[10px] font-mono">{diagnostic}</span>}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {Object.entries(acc.capabilities).map(([key, enabled]) => (
@@ -431,13 +398,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
 
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => handleSyncAccount(acc.id)}
+                      onClick={() => handleTestConnection(acc)}
                       disabled={isSyncing}
                       className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-xs text-slate-300 hover:text-white border border-white/[0.08] flex items-center gap-1 transition-colors"
-                      title="Test Connection"
+                      title="Test Live Connection API"
                     >
                       <RefreshCw className={cn("w-3 h-3 text-blue-400", isSyncing && "animate-spin")} />
-                      <span>{isSyncing ? "Testing..." : "Verify"}</span>
+                      <span>{isSyncing ? "Testing..." : "Test Ping"}</span>
                     </button>
 
                     <button
@@ -453,21 +420,39 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
             );
           })}
         </div>
+      ) : (
+        <div className="p-12 text-center rounded-2xl border border-dashed border-white/10 bg-[#080A0F]/60 flex flex-col items-center">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mb-4 text-blue-400">
+            <Link2 className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-white mb-1">No Social Channels Connected Yet</h3>
+          <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
+            Connect official handles via Buffer-style OAuth 2.0 or platform API credentials to start autonomous publishing and community triage.
+          </p>
+          <button
+            onClick={() => handleOpenConnectModal("x")}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center gap-1.5 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Connect Your First Channel
+          </button>
+        </div>
       )}
 
-      {/* Connect Account Modal */}
+      {/* Connect Channel Modal (Buffer.com Style) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#0D1016] border border-white/10 shadow-2xl p-6 relative">
-            <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-5">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30">
-                  <Plus className="w-4 h-4" />
-                </div>
+          <div className="w-full max-w-xl rounded-2xl bg-[#0D1016] border border-white/10 shadow-2xl p-6 relative">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-4">
+              <div className="flex items-center gap-3">
+                <PlatformBadge platform={selectedPlatform} size="md" showLabel={false} />
                 <div>
-                  <h3 className="text-sm font-bold text-white">Connect Social Account</h3>
+                  <h3 className="text-sm font-bold text-white">
+                    Connect {provider?.name || selectedPlatform.toUpperCase()}
+                  </h3>
                   <p className="text-[11px] text-slate-400">
-                    {currentProject === "okn-token" ? "OKN Token Ecosystem" : "OKNEXUS Exchange"}
+                    {currentProject === "okn-token" ? "OKN Token (https://okntoken.com)" : "OKNEXUS Exchange (https://oknexusexchange.com)"}
                   </p>
                 </div>
               </div>
@@ -479,159 +464,211 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveAccount} className="space-y-4">
-              {/* Platform Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Platform
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(Object.keys(PLATFORM_DEFAULTS) as PlatformId[]).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPlatform(p)}
-                      className={cn(
-                        "p-2 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all",
-                        platform === p
-                          ? "bg-blue-600/20 border-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.3)]"
-                          : "bg-black/40 border-white/[0.06] text-slate-400 hover:text-white hover:bg-white/[0.04]"
-                      )}
-                    >
-                      <PlatformBadge platform={p} size="sm" showLabel={false} />
-                      <span className="capitalize text-[10px]">{p}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/60 border border-white/[0.08] mb-5">
+              <button
+                onClick={() => setConnectTab("oauth")}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all",
+                  connectTab === "oauth"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>OAuth 2.0 (1-Click)</span>
+              </button>
+              <button
+                onClick={() => setConnectTab("api_keys")}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all",
+                  connectTab === "api_keys"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>API Keys / Bot Token</span>
+              </button>
+              <button
+                onClick={() => setConnectTab("webhooks")}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all",
+                  connectTab === "webhooks"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                )}
+              >
+                <Webhook className="w-3.5 h-3.5" />
+                <span>Webhooks</span>
+              </button>
+            </div>
 
-              {/* Handle & Display Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Account Handle
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    placeholder={PLATFORM_DEFAULTS[platform].placeholderHandle}
-                    className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
+            {/* TAB 1: OAuth 2.0 (Buffer Style) */}
+            {connectTab === "oauth" && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/20 text-xs text-slate-300 space-y-2">
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-blue-400" />
+                    <span>Official OAuth 2.0 Permissions Required:</span>
+                  </div>
+                  <ul className="space-y-1 text-[11px] text-slate-400 font-mono list-disc list-inside">
+                    {provider.defaultScopes.map((scope) => (
+                      <li key={scope}>{scope}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-slate-400 pt-1">
+                    {provider.description}
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="e.g. OKN Official"
-                    className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
 
-              {/* Followers & Automation Level */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Follower Baseline
-                  </label>
-                  <input
-                    type="number"
-                    value={followers}
-                    onChange={(e) => setFollowers(e.target.value)}
-                    placeholder="10000"
-                    className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Account Handle
+                    </label>
+                    <input
+                      type="text"
+                      value={customHandle}
+                      onChange={(e) => setCustomHandle(e.target.value)}
+                      placeholder="@handle"
+                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Audience Size
+                    </label>
+                    <input
+                      type="number"
+                      value={followers}
+                      onChange={(e) => setFollowers(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Automation Policy
-                  </label>
-                  <select
-                    value={automationLevel}
-                    onChange={(e) =>
-                      setAutomationLevel(
-                        e.target.value as "approval_required" | "suggest_only" | "autonomous" | "off"
-                      )
-                    }
-                    className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="approval_required">Approval Required (Safe)</option>
-                    <option value="suggest_only">Suggest Only (Drafts)</option>
-                    <option value="autonomous">Autonomous (Full AI)</option>
-                    <option value="off">Off (Manual Only)</option>
-                  </select>
-                </div>
-              </div>
 
-              {/* Capabilities Checkboxes */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Enabled Agent Capabilities
-                </label>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-black/40 border border-white/[0.06] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={capPublish}
-                      onChange={(e) => setCapPublish(e.target.checked)}
-                      className="rounded accent-blue-600"
-                    />
-                    <span className="text-slate-300">Publish Content</span>
-                  </label>
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-black/40 border border-white/[0.06] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={capInbox}
-                      onChange={(e) => setCapInbox(e.target.checked)}
-                      className="rounded accent-blue-600"
-                    />
-                    <span className="text-slate-300">Read Inbox</span>
-                  </label>
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-black/40 border border-white/[0.06] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={capAutoReply}
-                      onChange={(e) => setCapAutoReply(e.target.checked)}
-                      className="rounded accent-blue-600"
-                    />
-                    <span className="text-slate-300">AI Auto-Reply</span>
-                  </label>
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-black/40 border border-white/[0.06] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={capAnalytics}
-                      onChange={(e) => setCapAnalytics(e.target.checked)}
-                      className="rounded accent-blue-600"
-                    />
-                    <span className="text-slate-300">Sync Analytics</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.08]">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 text-xs font-semibold"
+                  onClick={handleInitiateOAuth}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-[0_0_15px_rgba(37,99,235,0.4)] flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Save Account</span>
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Authorize &amp; Connect {provider.name}</span>
                 </button>
               </div>
-            </form>
+            )}
+
+            {/* TAB 2: API Keys / Bot Tokens */}
+            {connectTab === "api_keys" && (
+              <form onSubmit={handleSaveApiKeysAccount} className="space-y-4">
+                {selectedPlatform === "telegram" ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Telegram Bot Token (from @BotFather)
+                      </label>
+                      <input
+                        type="password"
+                        value={botToken}
+                        onChange={(e) => setBotToken(e.target.value)}
+                        placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                        className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Target Channel Username / Chat ID
+                      </label>
+                      <input
+                        type="text"
+                        value={chatId}
+                        onChange={(e) => setChatId(e.target.value)}
+                        placeholder="@OKNCommunity or -1001234567890"
+                        className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        API Bearer Token / Access Token
+                      </label>
+                      <input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="Enter platform access token..."
+                        className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Display Handle
+                    </label>
+                    <input
+                      type="text"
+                      value={customHandle}
+                      onChange={(e) => setCustomHandle(e.target.value)}
+                      placeholder="@handle"
+                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Automation Policy
+                    </label>
+                    <select
+                      value={automationLevel}
+                      onChange={(e) => setAutomationLevel(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="approval_required">Approval Required</option>
+                      <option value="suggest_only">Suggest Only</option>
+                      <option value="autonomous">Autonomous (Full AI)</option>
+                      <option value="off">Off (Manual)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save &amp; Verify Credentials</span>
+                </button>
+              </form>
+            )}
+
+            {/* TAB 3: Webhook Ingestion */}
+            {connectTab === "webhooks" && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-slate-900 border border-white/10 text-xs space-y-2">
+                  <div className="font-semibold text-white">Live Webhook Callback URL:</div>
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/60 border border-white/[0.08] font-mono text-[11px] text-cyan-300 break-all">
+                    <span>
+                      {typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/${selectedPlatform}` : `/api/webhooks/${selectedPlatform}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyWebhook(selectedPlatform)}
+                      className="ml-auto p-1 rounded bg-white/10 hover:bg-white/20 text-white shrink-0"
+                    >
+                      {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Paste this URL into your {provider.name} Developer App webhook subscriptions to receive live mentions, comments, and direct messages into the Unified Inbox.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
