@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import confetti from "canvas-confetti";
 import { ProjectId, PlatformId, SocialAccount } from "@/types";
 import { mockSocialAccounts } from "@/lib/data/mockData";
 import { SOCIAL_PROVIDERS } from "@/lib/social/providerRegistry";
@@ -27,7 +26,6 @@ import {
   Webhook,
   Copy,
   Radio,
-  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +58,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [diagnosticResult, setDiagnosticResult] = useState<Record<string, string>>({});
   const [copiedWebhook, setCopiedWebhook] = useState(false);
-  const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Form State for custom credentials
   const [customHandle, setCustomHandle] = useState("");
@@ -85,38 +83,6 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
     }
   }, [accounts]);
-
-  // Sprout Social / Buffer.com OAuth Popup Message Listener
-  const handleOAuthMessage = useCallback(
-    (event: MessageEvent) => {
-      if (event.data?.type === "OKN_OAUTH_SUCCESS" && event.data?.account) {
-        const newAcc: SocialAccount = event.data.account;
-        setAccounts((prev) => [
-          newAcc,
-          ...prev.filter((a) => !(a.platform === newAcc.platform && a.projectId === newAcc.projectId)),
-        ]);
-        setIsModalOpen(false);
-        setIsConnectingOAuth(false);
-
-        // Confetti celebration on successful OAuth connect
-        confetti({
-          particleCount: 60,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ["#3B82F6", "#10B981", "#8B5CF6"],
-        });
-      } else if (event.data?.type === "OKN_OAUTH_ERROR") {
-        setIsConnectingOAuth(false);
-        console.error("OAuth failed:", event.data.error);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    window.addEventListener("message", handleOAuthMessage);
-    return () => window.removeEventListener("message", handleOAuthMessage);
-  }, [handleOAuthMessage]);
 
   const provider = SOCIAL_PROVIDERS[selectedPlatform];
   const projectAccounts = accounts.filter((a) => a.projectId === currentProject);
@@ -147,24 +113,18 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     setIsModalOpen(true);
   };
 
-  // Launch Real OAuth 2.0 Popup (Buffer.com / Sprout Social Style)
-  const handleLaunchOAuthPopup = () => {
-    setIsConnectingOAuth(true);
-    const width = 520;
-    const height = 680;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-
-    const popupUrl = `/api/social/oauth/${selectedPlatform}?projectId=${currentProject}&popup=1`;
-    const popup = window.open(
-      popupUrl,
-      `oauth_${selectedPlatform}`,
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-    );
-
-    // Fallback if popup is blocked
-    if (!popup || popup.closed || typeof popup.closed === "undefined") {
-      window.location.href = popupUrl;
+  // Direct OAuth 2.0 Flow with Redirect to Platform Authorization URL
+  const handleConnectOAuth = async (platformToConnect: PlatformId = selectedPlatform) => {
+    setIsRedirecting(true);
+    try {
+      const res = await fetch(`/api/oauth/${platformToConnect}/auth?projectId=${currentProject}`);
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch (err) {
+      console.error("Failed to initiate OAuth authorization:", err);
+      setIsRedirecting(false);
     }
   };
 
@@ -197,13 +157,6 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
 
     setAccounts((prev) => [newAcc, ...prev.filter((a) => !(a.platform === selectedPlatform && a.projectId === currentProject))]);
     setIsModalOpen(false);
-
-    confetti({
-      particleCount: 50,
-      spread: 50,
-      origin: { y: 0.6 },
-      colors: ["#3B82F6", "#10B981"],
-    });
   };
 
   const handleDeleteAccount = (id: string) => {
@@ -259,7 +212,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 Social Accounts Integration Hub
               </h2>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-600/20 text-blue-300 border border-blue-500/30 font-bold">
-                Sprout Social &amp; Buffer Style
+                OAuth 2.0 Active
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -279,11 +232,11 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </div>
       </div>
 
-      {/* Available Channels Quick Connect Bar (Sprout Social / Buffer Style) */}
+      {/* Available Channels Quick Connect Bar */}
       <div className="p-4 rounded-2xl bg-[#080A0F] border border-white/[0.06]">
         <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold mb-3 flex items-center justify-between">
           <span>Social Channel Authorization Matrix</span>
-          <span className="text-slate-500 text-[10px] lowercase">Click any channel to launch OAuth</span>
+          <span className="text-slate-500 text-[10px] lowercase">Click any channel to connect</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
           {(Object.keys(SOCIAL_PROVIDERS) as PlatformId[]).map((p) => {
@@ -451,7 +404,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           </div>
           <h3 className="text-base font-bold text-white mb-1">No Social Channels Connected Yet</h3>
           <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-            Connect official handles via Sprout Social &amp; Buffer style OAuth 2.0 or platform API credentials to start autonomous publishing and community triage.
+            Connect official handles via OAuth 2.0 authorization or platform API credentials to start autonomous publishing and community triage.
           </p>
           <button
             onClick={() => handleOpenConnectModal("x")}
@@ -463,7 +416,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </div>
       )}
 
-      {/* Connect Channel Modal (Sprout Social / Buffer.com Style) */}
+      {/* Connect Channel Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-xl rounded-2xl bg-[#0D1016] border border-white/10 shadow-2xl p-6 relative">
@@ -488,6 +441,26 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
               </button>
             </div>
 
+            {/* Platform Selection Row */}
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-4">
+              {(Object.keys(SOCIAL_PROVIDERS) as PlatformId[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setSelectedPlatform(p)}
+                  className={cn(
+                    "p-2 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all",
+                    selectedPlatform === p
+                      ? "bg-blue-600/20 border-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+                      : "bg-black/40 border-white/[0.06] text-slate-400 hover:text-white hover:bg-white/[0.04]"
+                  )}
+                >
+                  <PlatformBadge platform={p} size="sm" showLabel={false} />
+                  <span className="capitalize text-[9px] font-semibold">{p}</span>
+                </button>
+              ))}
+            </div>
+
             {/* Mode Switcher Tabs */}
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/60 border border-white/[0.08] mb-5">
               <button
@@ -500,7 +473,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 )}
               >
                 <Link2 className="w-3.5 h-3.5" />
-                <span>OAuth 2.0 (1-Click Popup)</span>
+                <span>OAuth 2.0 (Direct Redirect)</span>
               </button>
               <button
                 onClick={() => setConnectTab("api_keys")}
@@ -528,13 +501,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
               </button>
             </div>
 
-            {/* TAB 1: OAuth 2.0 (Sprout Social / Buffer Style Popup) */}
+            {/* TAB 1: Direct OAuth 2.0 Flow */}
             {connectTab === "oauth" && (
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/20 text-xs text-slate-300 space-y-2">
                   <div className="font-semibold text-white flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-blue-400" />
-                    <span>Requested Platform Permissions:</span>
+                    <span>Requested Scopes for {provider.name}:</span>
                   </div>
                   <ul className="space-y-1 text-[11px] text-slate-400 font-mono list-disc list-inside">
                     {provider.defaultScopes.map((scope) => (
@@ -542,45 +515,19 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     ))}
                   </ul>
                   <p className="text-[11px] text-slate-400 pt-1">
-                    Clicking below will open the secure authorization window. Grant permissions to connect your channel in real time.
+                    Clicking &quot;Authorize via {provider.name}&quot; redirects you to the platform authorization page and returns to the command center upon approval.
                   </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Target Account Handle
-                    </label>
-                    <input
-                      type="text"
-                      value={customHandle}
-                      onChange={(e) => setCustomHandle(e.target.value)}
-                      placeholder="@handle"
-                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Audience Size
-                    </label>
-                    <input
-                      type="number"
-                      value={followers}
-                      onChange={(e) => setFollowers(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                    />
-                  </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={handleLaunchOAuthPopup}
-                  disabled={isConnectingOAuth}
-                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95"
+                  onClick={() => handleConnectOAuth(selectedPlatform)}
+                  disabled={isRedirecting}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95"
                 >
                   <ExternalLink className="w-4 h-4" />
                   <span>
-                    {isConnectingOAuth ? "Connecting via OAuth Window..." : `Launch OAuth Authorization (${provider.name})`}
+                    {isRedirecting ? `Redirecting to ${provider.name}...` : `Authorize via ${provider.name}`}
                   </span>
                 </button>
               </div>
