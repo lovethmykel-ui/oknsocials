@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import confetti from "canvas-confetti";
 import { ProjectId, PlatformId, SocialAccount } from "@/types";
 import { mockSocialAccounts } from "@/lib/data/mockData";
-import { SOCIAL_PROVIDERS, SocialProviderConfig } from "@/lib/social/providerRegistry";
+import { SOCIAL_PROVIDERS } from "@/lib/social/providerRegistry";
 import { GlassPanel } from "../ui/GlassPanel";
 import { PlatformBadge } from "../ui/PlatformBadge";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -26,6 +27,7 @@ import {
   Webhook,
   Copy,
   Radio,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +60,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [diagnosticResult, setDiagnosticResult] = useState<Record<string, string>>({});
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
 
   // Form State for custom credentials
   const [customHandle, setCustomHandle] = useState("");
@@ -82,6 +85,38 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
     }
   }, [accounts]);
+
+  // Sprout Social / Buffer.com OAuth Popup Message Listener
+  const handleOAuthMessage = useCallback(
+    (event: MessageEvent) => {
+      if (event.data?.type === "OKN_OAUTH_SUCCESS" && event.data?.account) {
+        const newAcc: SocialAccount = event.data.account;
+        setAccounts((prev) => [
+          newAcc,
+          ...prev.filter((a) => !(a.platform === newAcc.platform && a.projectId === newAcc.projectId)),
+        ]);
+        setIsModalOpen(false);
+        setIsConnectingOAuth(false);
+
+        // Confetti celebration on successful OAuth connect
+        confetti({
+          particleCount: 60,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ["#3B82F6", "#10B981", "#8B5CF6"],
+        });
+      } else if (event.data?.type === "OKN_OAUTH_ERROR") {
+        setIsConnectingOAuth(false);
+        console.error("OAuth failed:", event.data.error);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    window.addEventListener("message", handleOAuthMessage);
+    return () => window.removeEventListener("message", handleOAuthMessage);
+  }, [handleOAuthMessage]);
 
   const provider = SOCIAL_PROVIDERS[selectedPlatform];
   const projectAccounts = accounts.filter((a) => a.projectId === currentProject);
@@ -112,42 +147,24 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
     setIsModalOpen(true);
   };
 
-  // Buffer-Style OAuth 2.0 Popup / Redirect
-  const handleInitiateOAuth = async () => {
-    try {
-      const res = await fetch(`/api/social/oauth/${selectedPlatform}?projectId=${currentProject}`);
-      const data = await res.json();
+  // Launch Real OAuth 2.0 Popup (Buffer.com / Sprout Social Style)
+  const handleLaunchOAuthPopup = () => {
+    setIsConnectingOAuth(true);
+    const width = 520;
+    const height = 680;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
 
-      if (data.authUrl) {
-        // In full OAuth environment, redirect to provider auth window
-        // For development / instant connection, save account and trigger confirmation
-        const newAcc: SocialAccount = {
-          id: `acc-${selectedPlatform}-${Date.now()}`,
-          projectId: currentProject,
-          platform: selectedPlatform,
-          handle: customHandle.trim() || `@${selectedPlatform}_official`,
-          displayName: customDisplayName.trim() || `${selectedPlatform.toUpperCase()} Account`,
-          avatarUrl:
-            currentProject === "okn-token"
-              ? "/assets/brand/OKN_coin_transparent.png"
-              : "/assets/brand/OKN_logo_transparent.png",
-          status: "healthy",
-          followers: parseInt(followers, 10) || 12000,
-          lastSyncAt: new Date().toISOString(),
-          automationLevel,
-          capabilities: {
-            publish: capPublish,
-            readInbox: capInbox,
-            autoReply: capAutoReply,
-            analytics: capAnalytics,
-          },
-        };
+    const popupUrl = `/api/social/oauth/${selectedPlatform}?projectId=${currentProject}&popup=1`;
+    const popup = window.open(
+      popupUrl,
+      `oauth_${selectedPlatform}`,
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+    );
 
-        setAccounts((prev) => [newAcc, ...prev.filter((a) => !(a.platform === selectedPlatform && a.projectId === currentProject))]);
-        setIsModalOpen(false);
-      }
-    } catch (err) {
-      console.error("OAuth initiation failed", err);
+    // Fallback if popup is blocked
+    if (!popup || popup.closed || typeof popup.closed === "undefined") {
+      window.location.href = popupUrl;
     }
   };
 
@@ -180,6 +197,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
 
     setAccounts((prev) => [newAcc, ...prev.filter((a) => !(a.platform === selectedPlatform && a.projectId === currentProject))]);
     setIsModalOpen(false);
+
+    confetti({
+      particleCount: 50,
+      spread: 50,
+      origin: { y: 0.6 },
+      colors: ["#3B82F6", "#10B981"],
+    });
   };
 
   const handleDeleteAccount = (id: string) => {
@@ -235,11 +259,11 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 Social Accounts Integration Hub
               </h2>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-600/20 text-blue-300 border border-blue-500/30 font-bold">
-                Buffer-Style OAuth 2.0
+                Sprout Social &amp; Buffer Style
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Live API connections and automated agent dispatch for {currentProject === "okn-token" ? "OKN Token (https://okntoken.com)" : "OKNEXUS Exchange (https://oknexusexchange.com)"}
+              Live OAuth 2.0 authentication, Telegram BotFather API, and webhook listeners for {currentProject === "okn-token" ? "OKN Token (https://okntoken.com)" : "OKNEXUS Exchange (https://oknexusexchange.com)"}
             </p>
           </div>
         </div>
@@ -255,11 +279,11 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </div>
       </div>
 
-      {/* Available Channels Quick Connect Bar (Buffer Style) */}
+      {/* Available Channels Quick Connect Bar (Sprout Social / Buffer Style) */}
       <div className="p-4 rounded-2xl bg-[#080A0F] border border-white/[0.06]">
         <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold mb-3 flex items-center justify-between">
-          <span>Supported Social API Integrations</span>
-          <span className="text-slate-500 text-[10px] lowercase">Click any channel to connect</span>
+          <span>Social Channel Authorization Matrix</span>
+          <span className="text-slate-500 text-[10px] lowercase">Click any channel to launch OAuth</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
           {(Object.keys(SOCIAL_PROVIDERS) as PlatformId[]).map((p) => {
@@ -427,7 +451,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
           </div>
           <h3 className="text-base font-bold text-white mb-1">No Social Channels Connected Yet</h3>
           <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-            Connect official handles via Buffer-style OAuth 2.0 or platform API credentials to start autonomous publishing and community triage.
+            Connect official handles via Sprout Social &amp; Buffer style OAuth 2.0 or platform API credentials to start autonomous publishing and community triage.
           </p>
           <button
             onClick={() => handleOpenConnectModal("x")}
@@ -439,7 +463,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
         </div>
       )}
 
-      {/* Connect Channel Modal (Buffer.com Style) */}
+      {/* Connect Channel Modal (Sprout Social / Buffer.com Style) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-xl rounded-2xl bg-[#0D1016] border border-white/10 shadow-2xl p-6 relative">
@@ -476,7 +500,7 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                 )}
               >
                 <Link2 className="w-3.5 h-3.5" />
-                <span>OAuth 2.0 (1-Click)</span>
+                <span>OAuth 2.0 (1-Click Popup)</span>
               </button>
               <button
                 onClick={() => setConnectTab("api_keys")}
@@ -504,13 +528,13 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
               </button>
             </div>
 
-            {/* TAB 1: OAuth 2.0 (Buffer Style) */}
+            {/* TAB 1: OAuth 2.0 (Sprout Social / Buffer Style Popup) */}
             {connectTab === "oauth" && (
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/20 text-xs text-slate-300 space-y-2">
                   <div className="font-semibold text-white flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-blue-400" />
-                    <span>Official OAuth 2.0 Permissions Required:</span>
+                    <span>Requested Platform Permissions:</span>
                   </div>
                   <ul className="space-y-1 text-[11px] text-slate-400 font-mono list-disc list-inside">
                     {provider.defaultScopes.map((scope) => (
@@ -518,14 +542,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
                     ))}
                   </ul>
                   <p className="text-[11px] text-slate-400 pt-1">
-                    {provider.description}
+                    Clicking below will open the secure authorization window. Grant permissions to connect your channel in real time.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Account Handle
+                      Target Account Handle
                     </label>
                     <input
                       type="text"
@@ -550,11 +574,14 @@ export const SocialAccountsView: React.FC<SocialAccountsViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleInitiateOAuth}
+                  onClick={handleLaunchOAuthPopup}
+                  disabled={isConnectingOAuth}
                   className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all active:scale-95"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  <span>Authorize &amp; Connect {provider.name}</span>
+                  <span>
+                    {isConnectingOAuth ? "Connecting via OAuth Window..." : `Launch OAuth Authorization (${provider.name})`}
+                  </span>
                 </button>
               </div>
             )}
