@@ -34,14 +34,21 @@ graph TD
         C --> W6[6. Campaign Builder]
         C --> W7[7. Media Vault]
         C --> W8[8. Executive Analytics]
-        C --> W9[9. Social Accounts Manager]
+        C --> W9[9. Social Accounts Buffer-Style Hub]
         C --> W10[10. AI Agent Matrix 12 Agents]
         C --> W11[11. Project AI Brain]
         C --> W12[12. System & Database Settings]
     end
 
+    subgraph Buffer-Style Social Integration Engine
+        W9 --> OAUTH[/api/social/oauth/platform - OAuth 2.0 PKCE Flow]
+        W9 --> PING[/api/social/test-connection - Live Latency Ping]
+        W9 --> DISPATCH[/api/social/publish - Live API Dispatch]
+        W9 --> HOOK[/api/webhooks/platform - Real-Time Ingestion]
+    end
+
     subgraph Intelligence & Safety Engine
-        W4 --> GAPI[Live Google Gemini 2.0 API Route]
+        W4 --> GAPI[Live Google Gemini AI Engine: gemini-flash-latest]
         W4 --> SE[Sentinel 4-Tier Risk Classifier]
         W3 --> AIResp[Brand-Voice Response Generator]
         W11 --> PBR[Policy & Forbidden Claims Enforcer]
@@ -104,10 +111,12 @@ graph TD
 - **Audience & Platform Breakdown**: Distribution percentages across social channels.
 - **Velocity Metrics**: Engagement spikes and response speed tracking.
 
-### 9. Social Accounts Manager
-- **Interactive Account Connection**: Add custom handles, toggle platform permissions (Publish, Read Inbox, Auto-Reply, Analytics).
-- **Health Diagnostics**: Real-time status indicators (Healthy, Attention Needed, Rate Limited).
-- **Follower Baselines**: Live aggregate count for both OKN Token and OKNEXUS Exchange.
+### 9. Social Accounts Integration Hub (Buffer.com Style)
+- **3 Connection Modes**:
+  1. **OAuth 2.0 1-Click Connect**: Buffer-style popup authorization flow with granted scopes.
+  2. **API Keys / Bot Token Setup**: Direct credential integration (Telegram BotFather token, Meta Graph App ID, Bearer Tokens).
+  3. **Live Webhook Ingestion**: Dedicated webhook receiver per platform (`/api/webhooks/[platform]`) for real-time DMs, mentions, and replies.
+- **Live Diagnostics**: Ping `/api/social/test-connection` for real latency and scope validation.
 
 ### 10. AI Agent Matrix (12 Specialized Agents)
 - **Full Roster**: Social Director, Content Architect, Inbox Intelligence, Comment Moderator, Community Liaison, Sentinel Threat Interceptor, Analytics Engine, Release Scheduler, Campaign Operations, Trend Scout, Influencer Scout, and Account Health Monitor.
@@ -125,44 +134,45 @@ graph TD
 
 ---
 
-## 3. Operations Manual — How to Use Every Feature
+## 3. Buffer-Style Social Integration API Reference
 
-### Step 1: Unlocking the Command Center
-1. Open the application URL in your browser (`http://localhost:3000` or your Vercel deployment).
-2. Enter the 4-digit PIN: **`1234`**.
-3. Upon success, the green shield will confirm and unlock your session.
-
-### Step 2: Switching Ecosystem Projects
-1. In the left sidebar header, click the project badge (e.g. **OKNEXUS Exchange**).
-2. Select **OKN Token** or **OKNEXUS Exchange** from the dropdown.
-3. All workspaces instantly re-contextualize to the selected entity.
-
-### Step 3: Connecting Your Social Accounts
-1. In the sidebar, click **Social Accounts**.
-2. Click the blue **"Connect Social Account"** button.
-3. Select your platform (e.g. X, Telegram, Instagram).
-4. Enter your handle (e.g. `@OKNToken` or `@OKNEXUS`), follower count, and choose an automation level.
-5. Click **"Save Account"**. The new account will immediately appear in your active fleet.
-
-### Step 4: Generating and Publishing Content with Gemini AI
-1. Go to **Content Studio**.
-2. Type or paste your concept into the narrative textarea:
-   > *"OKNEXUS perpetual DEX liquidity vaults are officially opening with zero counterparty drag at https://oknexusexchange.com"*
-3. Click **"✦ AI Adapt via Gemini"**.
-4. Gemini will generate optimized copies for all 7 channels in ~1 second.
-5. Click between **X**, **Instagram**, **LinkedIn**, and **Telegram** tabs to preview the exact post layout.
-6. Click **"Publish All Now"** to finalize.
-
-### Step 5: Handling Inquiries in the Unified Inbox
-1. Go to **Unified Inbox**.
-2. Select any incoming inquiry from the conversation list.
-3. Review the AI intent tag (e.g., *Product Question*) and sentiment indicator.
-4. Click **"Insert into Composer"** under the *AI Suggested Brand Response* card.
-5. Edit or refine the reply, then click the **Send** button.
+| Platform | Auth Type | Initiation Endpoint | Token Exchange / Callback | Live Dispatch Endpoint |
+|---|---|---|---|---|
+| **X / Twitter** | OAuth 2.0 PKCE | `GET /api/social/oauth/x` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
+| **Telegram** | BotFather API Token | Configuration Modal | Direct Verification | `POST /api/social/publish` |
+| **Instagram** | Meta Graph OAuth 2.0 | `GET /api/social/oauth/instagram` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
+| **LinkedIn** | LinkedIn OAuth 2.0 | `GET /api/social/oauth/linkedin` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
+| **YouTube** | Google OAuth 2.0 | `GET /api/social/oauth/youtube` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
+| **TikTok** | TikTok OAuth 2.0 | `GET /api/social/oauth/tiktok` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
+| **Facebook** | Meta Graph OAuth 2.0 | `GET /api/social/oauth/facebook` | `GET /api/social/oauth/callback` | `POST /api/social/publish` |
 
 ---
 
-## 4. Official Ecosystem Links Reference
+## 4. Operations Manual — How to Connect & Publish
+
+### Step 1: Connecting Social Accounts (Buffer Style)
+1. Navigate to **Social Accounts** from the sidebar.
+2. In the top bar, select any platform icon (e.g. **X**, **Telegram**, **Instagram**, or **LinkedIn**).
+3. In the modal:
+   - **For Instant OAuth 2.0**: Review the required scopes and click **"Authorize & Connect"**.
+   - **For Telegram**: Switch to the **API Keys / Bot Token** tab, paste your Bot Token from `@BotFather`, enter your `@Channel` username or Chat ID, and click **"Save & Verify Credentials"**.
+   - **For Real-Time Webhooks**: Switch to the **Webhooks** tab and copy your dedicated webhook URL (`https://your-domain/api/webhooks/[platform]`).
+4. The account will immediately appear in your active fleet with a green nominal status badge.
+
+### Step 2: Testing Live Connection Health
+1. On any connected account card, click the **"Test Ping"** button.
+2. The system pings `/api/social/test-connection`, verifying API token validity and latency in real-time.
+
+### Step 3: Generating & Dispatching Content with Gemini AI
+1. Go to **Content Studio**.
+2. Enter your raw release concept (e.g., *"OKNEXUS Perpetual DEX liquidity vaults are officially opening with zero counterparty drag at https://oknexusexchange.com"*).
+3. Click **"✦ AI Adapt via Gemini"**.
+4. Gemini synthesizes tailored copies for X, Instagram, LinkedIn, Telegram, etc.
+5. Click **"Publish All Now"** to dispatch the post across all connected channels via `/api/social/publish`.
+
+---
+
+## 5. Official Ecosystem Links Reference
 
 | Entity | Official Website | Social Focus |
 |---|---|---|
